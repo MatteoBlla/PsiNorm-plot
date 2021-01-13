@@ -9,7 +9,7 @@ library(ggplot2)
 library(RColorBrewer)
 
 #dataset after normalization phase
-load("C:/Users/Matteo/Desktop/Borsa studio/data_norms/otherdatas_after_normalization.rdata")
+load("/directory/otherdatas_after_normalization.rdata")
 norm<-c("Scran","Pareto", "DESeq2", "TMM", "logCPM", "Linnorm", "CLR", "SCT")
 
 #transform in a list of SingleCellExperiment objects
@@ -30,7 +30,7 @@ for (i in 2:8){
   assay(datasets$res_cs53, norm[i])<-assay(res1$result[[i+40]], norm [i])
 }
 remove(res1)
-load("C:/Users/Matteo/Desktop/Borsa studio/data_norms/10x_5cl_after_normalization.rdata")
+load("/directory/10x_5cl_after_normalization.rdata")
 datasets$res_10x5<-res1$result[[1]]
 for (i in 2:8) {
   assay(datasets$res_10x5, norm[i])<-assay(res1$result[[i]], norm [i])
@@ -68,7 +68,7 @@ for (i in 1:length(datasets)) {
   }
 }
 
-load("C:/Users/Matteo/Desktop/Fedez data/RData/normData.rdata")
+load("/directory/normData.rdata")
 datasets<-list()
 datasets$csmart<-res[,1:500]
 datasets$nsmart<-res[,501:1000]
@@ -163,7 +163,7 @@ rm(list= ls()[!(ls() %in% c('gcorr'))])
 # ------------- CONCORDANCE --------------------
 library(Seurat)
 library(scater)
-load("C:/Users/Matteo/Desktop/Fedez data/RData/normData.rdata")
+load("/directory/normData.rdata")
 data<-list()
 data$csmart<-res[,1:500]
 data$nsmart<-res[,501:1000]
