@@ -1,3 +1,6 @@
+
+## INSERIRE CODICE PER CALCOLARE RAM E TEMPI 
+
 ### 25k
 datas<-list(
   scran=read.csv(file = "C:/Users/Matteo/Desktop/final_box/RAM25/RAM/scran25.txt", sep = ""),
