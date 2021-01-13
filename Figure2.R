@@ -7,7 +7,7 @@ library(scater)
 library(gridExtra)
 
 #loading the datasets after the normalizations
-load("C:/Users/Matteo/Desktop/Borsa studio/data_norms/otherdatas_after_normalization.rdata")
+load("/directory/otherdatas_after_normalization.rdata")
 norm<-c("Scran","Pareto", "DESeq2", "TMM", "logCPM", "Linnorm", "CLR", "SCT")
 
 #transform in a list of SingleCellExperiment objects
@@ -28,7 +28,7 @@ for (i in 2:8){
   assay(datasets$res_cs53, norm[i])<-assay(res1$result[[i+40]], norm [i])
 }
 remove(res1)
-load("C:/Users/Matteo/Desktop/Borsa studio/data_norms/10x_5cl_after_normalization.rdata")
+load("/directory/10x_5cl_after_normalization.rdata")
 datasets$res_10x5<-res1$result[[1]]
 for (i in 2:8) {
   assay(datasets$res_10x5, norm[i])<-assay(res1$result[[i]], norm [i])
@@ -165,7 +165,6 @@ ff<-function(list1, list2){
 counts_3cel<-ff(datas, cell.depth) 
 par_3cel<-ff(datas_pareto, cell.depth)
 
-#------------ would need a refactoring ------------
 #CSEQ
 counts<-counts_3cel$res_cs2
 rank<-c()
@@ -538,7 +537,7 @@ g4<-ggplot(df, aes(x=log1p(rank), y=log1p(u.values),
   theme(legend.position = "none",
         axis.title.x = element_blank(),
         axis.title.y = element_blank())
-# ------------------- refactoring end ----------
+
 library(grid)
 library(ggplot2)
 library(lattice)
