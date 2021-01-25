@@ -116,7 +116,7 @@ DESeq2_norm = function(sce){
 TMM_norm = function(sce){
   c<-counts(sce)
   tp = system.time({
-    sizeFactors(sce) <- edgeR::calcNormFactors(c, method = "TMM")
+    sizeFactors(sce) <- edgeR::calcNormFactors(c, method = "TMM")* colSums(counts(sce))
     tmmn <- scater::normalizeCounts(sce, exprs_values="counts")
     assay(sce, "TMM")<-tmmn
   })
