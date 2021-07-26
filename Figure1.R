@@ -1,10 +1,10 @@
-library(scran)
-library(edgeR)
 library(ggplot2)
 library(magrittr)
 library(CellBench)
-library(scater)
+library(SingleCellExperiment)
 library(gridExtra)
+library(VGAM)
+library(cowplot)
 
 #loading the datasets after the normalizations
 load("/directory/otherdatas_after_normalization.rdata")
@@ -35,9 +35,8 @@ for (i in 2:8) {
 }
 remove(res1)
 
-# counts and pareto normalized matrices
+# counts matrix
 datas<-lapply(datasets, function(x) counts(x)) 
-datas_pareto<-lapply(datasets, function(x) assay(x, "Pareto")) 
 
 # taking the cells with min, median and max sequencing depth
 depth<-lapply(datas, function(x) apply(x,2,sum))
@@ -55,14 +54,6 @@ ff<-function(list1, list2){
 }
 
 counts_3cel<-ff(datas, cell.depth) 
-par_3cel<-ff(datas_pareto, cell.depth)
-
-get_legend<-function(myggplot){
-  tmp <- ggplot_gtable(ggplot_build(myggplot))
-  leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box")
-  legend <- tmp$grobs[[leg]]
-  return(legend)
-}
 
 rank_plot<-function(list){
   gg<-list()
@@ -90,20 +81,20 @@ rank_plot<-function(list){
     gg[[j]]<-ggplot(df, aes(x=log(rank), y=log(val), 
                             color=cell_expression))+
       geom_point(shape=1)+
-      ggtitle(title[j],
+      ggtitle(title[j], 
               subtitle = paste0("slope: ",
                                 round(summary(lm1)$coefficients[2], 
                                       digits = 3), 
                                 " R^2: ", round(summary(lm1)$r.squared,
-                                                digits = 3), " (low)\r\n",
+                                                digits = 3), " (L)\r\n",
                                 "slope: ", round(summary(lm2)$coefficients[2], 
                                                  digits = 3), 
                                 " R^2: ", round(summary(lm2)$r.squared,
-                                                digits = 3), " (med)\r\n",
+                                                digits = 3), " (M)\r\n",
                                 "slope: ", round(summary(lm3)$coefficients[2], 
                                                  digits = 3), 
                                 " R^2: ", round(summary(lm3)$r.squared,
-                                                digits = 3), " (high)"))+
+                                                digits = 3), " (H)"))+
       geom_smooth(method = lm, aes(fill=cell_expression), se=F)+
       theme_minimal(base_line_size = .75)+ 
       theme(legend.position = "none",
@@ -120,24 +111,25 @@ rank_plot<-function(list){
 gg<-rank_plot(counts_3cel)
 
 df<-data.frame(rank=gg[[7]]$data$rank, val=gg[[7]]$data$val, #to make the legend
-               cell_expression=c(rep("Low Depth",  
+               cell_expression=c(rep(" Low Depth",  
                                      length(unique(sort(counts_3cel$res_10x5[,1])))),
-                                 rep("Med Depth", length(unique(sort(counts_3cel$res_10x5[,2])))),
+                                 rep(" Med Depth", length(unique(sort(counts_3cel$res_10x5[,2])))),
                                  rep("High Depth", length(unique(sort(counts_3cel$res_10x5[,3]))))
                ))
 legend<-get_legend(ggplot(df, aes(x=log(rank), y=log(val),
                                   color=cell_expression))+
-                     geom_point()+theme(legend.title = element_blank())+ 
-                     scale_color_manual(values=c('#56B4E9',
-                                                 '#E69F00', '#999999')))
+                     geom_point()+theme_minimal()+ theme(legend.title = element_blank())+
+                     scale_color_manual(values=c('#E69F00',
+                                                 '#999999', '#56B4E9')))
 # FIRST PART OF THE FIGURE 1
-slo1<-grid.arrange(gg[[1]], gg[[2]], gg[[3]], right=legend, ncol=3, #comment one line at time
-  #gg[[4]] ,gg[[5]], gg[[6]], gg[[7]], right=legend, ncol=4,
-  bottom="Log(ranks)", 
-  left="Log(absolute frequencies)",  nrow=1)
+slo1<-grid.arrange(#gg[[1]], gg[[2]], gg[[3]], right=legend, ncol=3, #comment one line at time
+  gg[[4]] ,gg[[5]], gg[[6]], gg[[7]], right=legend, ncol=4, #for supplementary
+  bottom="Log(ranks)",
+  left="Log(absolute frequencies)",
+  nrow=1)
 
 # GOODNESS OF FIT
-pareto.MLE <- function(X)
+pareto.MLE <- function(X) #estimating Pareto factors
 {
   n <- length(X[X>0])
   m <- min(X[X>0])
@@ -150,25 +142,7 @@ x.random <- function(N, x.min, alpha){
   x.min*(1-runif(N))^(-1/alpha)
 }
 
-# computing the parameters of Pareto and Zipf
-alpha1<-lapply(datas, function(x) apply(x+1,2,pareto.MLE)[2,])
-alpha0<-lapply(datas, function(x) apply(x,2,pareto.MLE)[2,])
-zipf.s<-function(data){
-  s<-c()
-  for(i in 1:ncol(data)){
-    uno<-sort(data[,i], decreasing = T) 
-    fr<-uno[uno>0]  
-    p <- fr/sum(fr) 
-    ll <- function(s)     
-      sum(fr*(s*log(1:length(p))+log(sum(1/(1:length(p))^s)))) 
-    fit <- mle(ll,start=list(s=1))
-    s.ll <- coef(fit)
-    s <- c(s,s.ll)
-  }
-}
-s.zipf<-lapply(datas, function(x) zipf.s(x))
-
-# function to compute the difference between teorical quantiles and empirical ones
+# compute the differences between teorical quantiles and empirical ones
 scarto.quantili<-function(data){
   N=nrow(data) 
   m=apply(data, 2, pareto.MLE)[1,] 
@@ -197,54 +171,51 @@ scarto.quantili<-function(data){
     c[,i]<-round(x.random(N, m[i], alpha[i])) # pareto+1 simulation 
     c0[,i]<-round(x.random(N, m[i], alpha0[i])) # pareto0 simulation
     c.zipf[,i]<-rzipf(n=nrow(data), N=max(data[,i]), shape = s[i]) #simulation of zipf
-
+    
     q.pareto[i]<-log((quantile(c[,i]-1, 0.75)+1)/(quantile(data[,i],0.75)+1))
     q.pareto0[i]<-log((quantile(c0[,i]-1, 0.75)+1)/(quantile(data[,i],0.75)+1))
     q.zipf[i]<-log((quantile(c.zipf[,i], 0.75)+1)/(quantile(data[,i],0.75)+1))
   }
-
+  
   q.max<-cbind(q.pareto, q.pareto0, q.zipf)
-
+  
   diff.quantili<-list(q.max)
   diff.quantili
 }
 
 scarti<-lapply(datas, scarto.quantili)
 
-scarti.75<-list(scarti$CELSeq[[1]],
-                scarti$sc_10x[[1]],
-                scarti$DropSeq[[1]],
-                scarti$Cseq1[[1]],
-                scarti$Cseq2[[1]],
-                scarti$Cseq3[[1]],
-                scarti$sc_10x5[[1]])
+scarti.75<-list(scarti$res_cs2[[1]],
+                scarti$res_10x[[1]],
+                scarti$res_dseq[[1]],
+                scarti$res_cs51[[1]],
+                scarti$res_cs52[[1]],
+                scarti$res_cs53[[1]],
+                scarti$res_10x5[[1]])
 names(scarti.75)<-names(scarti)
 
 library(ggplot2)
 library(ggridges)
 #CELSEQ
-df<-data.frame(scarti=as.vector(scarti.75$CELSeq),
-               metodo=c(rep("Pareto+1", nrow(scarti.75$CELSeq)),
-                        rep("Pareto 0", nrow(scarti.75$CELSeq)),
-                        rep("Zipf", nrow(scarti.75$CELSeq))),
-               ciao=rep("ciao", nrow(scarti.75$CELSeq)*3))
+df<-data.frame(scarti=as.vector(scarti.75$res_cs2),
+               metodo=c(rep("Pareto+1", nrow(scarti.75$res_cs2)),
+                        rep("Pareto 0", nrow(scarti.75$res_cs2)),
+                        rep("Zipf", nrow(scarti.75$res_cs2))),
+               ciao=rep("ciao", nrow(scarti.75$res_cs2)*3))
 gcelseq<-ggplot(df, aes(x=scarti, y=metodo))+
-  geom_density_ridges(alpha=.7, aes(fill=metodo),#rel_min_height = 5*10e-20,
-                      #stat = "binline", bins = 50
-  )+
+  geom_density_ridges(alpha=.7, aes(fill=metodo))+
   theme_minimal(base_line_size = .75)+ 
-  #scale_x_continuous(breaks = c(-1,-0.5,0,.5,1,2,3,4,5,6))+
   theme(legend.position = "none",
         axis.title.x = element_blank(),
         axis.title.y = element_blank(),
         axis.ticks.y = element_blank(),
         axis.text.y = element_blank())
 #10X
-df<-data.frame(scarti=as.vector(scarti.75$sc_10x),
-               metodo=c(rep("Pareto+1", nrow(scarti.75$sc_10x)),
-                        rep("Pareto 0", nrow(scarti.75$sc_10x)),
-                        rep("Zipf", nrow(scarti.75$sc_10x))),
-               ciao=rep("ciao", nrow(scarti.75$sc_10x)*3))
+df<-data.frame(scarti=as.vector(scarti.75$res_10x),
+               metodo=c(rep("Pareto+1", nrow(scarti.75$res_10x)),
+                        rep("Pareto 0", nrow(scarti.75$res_10x)),
+                        rep("Zipf", nrow(scarti.75$res_10x))),
+               ciao=rep("ciao", nrow(scarti.75$res_10x)*3))
 g10x<-ggplot(df, aes(x=scarti, y=metodo))+
   geom_density_ridges(alpha=.7, aes(fill=metodo))+
   theme_minimal(base_line_size = .75)+ 
@@ -253,12 +224,13 @@ g10x<-ggplot(df, aes(x=scarti, y=metodo))+
         axis.title.y = element_blank(),
         axis.ticks.y = element_blank(),
         axis.text.y = element_blank())
+
 #DROPSEQ 
-df<-data.frame(scarti=as.vector(scarti.75$DropSeq),
-               metodo=c(rep("Pareto+1", nrow(scarti.75$DropSeq)),
-                        rep("Pareto 0", nrow(scarti.75$DropSeq)),
-                        rep("Zipf", nrow(scarti.75$DropSeq))),
-               ciao=rep("ciao", nrow(scarti.75$DropSeq)*3))
+df<-data.frame(scarti=as.vector(scarti.75$res_dseq),
+               metodo=c(rep("Pareto+1", nrow(scarti.75$res_dseq)),
+                        rep("Pareto 0", nrow(scarti.75$res_dseq)),
+                        rep("Zipf", nrow(scarti.75$res_dseq))),
+               ciao=rep("ciao", nrow(scarti.75$res_dseq)*3))
 gdrop<-ggplot(df, aes(x=scarti, y=metodo))+
   geom_density_ridges(alpha=.6, aes(fill=metodo))+
   theme_minimal(base_line_size = .75)+ 
@@ -269,11 +241,11 @@ gdrop<-ggplot(df, aes(x=scarti, y=metodo))+
         axis.text.y = element_blank())
 
 #CSEQ1
-df<-data.frame(scarti=as.vector(scarti.75$Cseq1),
-               metodo=c(rep("Pareto+1", nrow(scarti.75$Cseq1)),
-                        rep("Pareto 0", nrow(scarti.75$Cseq1)),
-                        rep("Zipf", nrow(scarti.75$Cseq1))),
-               ciao=rep("ciao", nrow(scarti.75$Cseq1)*3))
+df<-data.frame(scarti=as.vector(scarti.75$res_cs51),
+               metodo=c(rep("Pareto+1", nrow(scarti.75$res_cs51)),
+                        rep("Pareto 0", nrow(scarti.75$res_cs51)),
+                        rep("Zipf", nrow(scarti.75$res_cs51))),
+               ciao=rep("ciao", nrow(scarti.75$res_cs51)*3))
 gcs1<-ggplot(df, aes(x=scarti, y=metodo))+
   geom_density_ridges(alpha=.6, aes(fill=metodo))+
   theme_minimal(base_line_size = .75)+
@@ -283,11 +255,11 @@ gcs1<-ggplot(df, aes(x=scarti, y=metodo))+
         axis.ticks.y = element_blank(),
         axis.text.y = element_blank())
 #CSEQ2
-df<-data.frame(scarti=as.vector(scarti.75$Cseq2),
-               metodo=c(rep("Pareto+1", nrow(scarti.75$Cseq2)),
-                        rep("Pareto 0", nrow(scarti.75$Cseq2)),
-                        rep("Zipf", nrow(scarti.75$Cseq2))),
-               ciao=rep("ciao", nrow(scarti.75$Cseq2)*3))
+df<-data.frame(scarti=as.vector(scarti.75$res_cs52),
+               metodo=c(rep("Pareto+1", nrow(scarti.75$res_cs52)),
+                        rep("Pareto 0", nrow(scarti.75$res_cs52)),
+                        rep("Zipf", nrow(scarti.75$res_cs52))),
+               ciao=rep("ciao", nrow(scarti.75$res_cs52)*3))
 gcs2<-ggplot(df, aes(x=scarti, y=metodo))+
   geom_density_ridges(alpha=.6, aes(fill=metodo))+
   theme_minimal(base_line_size = .75)+ 
@@ -297,11 +269,11 @@ gcs2<-ggplot(df, aes(x=scarti, y=metodo))+
         axis.ticks.y = element_blank(),
         axis.text.y = element_blank())
 #CSEQ3
-df<-data.frame(scarti=as.vector(scarti.75$Cseq3),
-               metodo=c(rep("Pareto+1", nrow(scarti.75$Cseq3)),
-                        rep("Pareto 0", nrow(scarti.75$Cseq3)),
-                        rep("Zipf", nrow(scarti.75$Cseq3))),
-               ciao=rep("ciao", nrow(scarti.75$Cseq3)*3))
+df<-data.frame(scarti=as.vector(scarti.75$res_cs53),
+               metodo=c(rep("Pareto+1", nrow(scarti.75$res_cs53)),
+                        rep("Pareto 0", nrow(scarti.75$res_cs53)),
+                        rep("Zipf", nrow(scarti.75$res_cs53))),
+               ciao=rep("ciao", nrow(scarti.75$res_cs53)*3))
 gcs3<-ggplot(df, aes(x=scarti, y=metodo))+
   geom_density_ridges(alpha=.6, aes(fill=metodo))+
   theme_minimal(base_line_size = .75)+ 
@@ -311,11 +283,11 @@ gcs3<-ggplot(df, aes(x=scarti, y=metodo))+
         axis.ticks.y = element_blank(),
         axis.text.y = element_blank())
 #10X5
-df<-data.frame(scarti=as.vector(scarti.75$sc_10x5),
-               metodo=c(rep("Pareto+1", nrow(scarti.75$sc_10x5)),
-                        rep("Pareto 0", nrow(scarti.75$sc_10x5)),
-                        rep("Zipf", nrow(scarti.75$sc_10x5))),
-               ciao=rep("ciao", nrow(scarti.75$sc_10x5)*3))
+df<-data.frame(scarti=as.vector(scarti.75$res_10x5),
+               metodo=c(rep("Pareto+1", nrow(scarti.75$res_10x5)),
+                        rep("Pareto 0", nrow(scarti.75$res_10x5)),
+                        rep("Zipf", nrow(scarti.75$res_10x5))),
+               ciao=rep("ciao", nrow(scarti.75$res_10x5)*3))
 g10x5<-ggplot(df, aes(x=scarti, y=metodo))+
   geom_density_ridges(alpha=.6, aes(fill=metodo))+
   theme_minimal(base_line_size = .75)+ 
@@ -330,10 +302,10 @@ legend<-get_legend(ggplot(df, aes(x=scarti, y=metodo))+
                                          stat = "binline", bins = 50)+
                      theme(legend.title = element_blank()))  
 
-g1<-grid.arrange(gcelseq, g10x, gdrop, ncol=3, #comment each row at time
-                 #gcs1, gcs2, gcs3, g10x5, ncol=4, 
-                 bottom="Log ratio simulated versus empirical third quartile",
-                 left="Absolute Frequencies",
-                 right=legend)    
-
-grid.arrange(slo1,g1) # FIGURE 1
+g1<-grid.arrange(#gcelseq, g10x, gdrop, ncol=3, #comment each row at time
+  gcs1, gcs2, gcs3, g10x5, ncol=4,  #for supplementary
+  bottom="Log ratio simulated versus empirical third quartile",
+  left="Absolute Frequencies",
+  right=legend)    
+# FIGURE 1
+plot_grid(slo1,g1, ncol=1, labels = c("A", "B")) 
