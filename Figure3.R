@@ -1,199 +1,336 @@
-library(scran)
-library(scater)
-library(CellBench)
-library(DrImpute)
-library(SAVER)
-library(cluster)
-library(heatmaply)
+### 25k cells
+datas<-list(
+  scran=read.csv(file = "/directory/scran25.txt", sep = ""),
+  pareto=read.csv(file = "/directory/pareto25.txt", sep = ""),
+  deseq=read.csv(file = "/directory/deseq25.txt", sep = ""),
+  logcpm=read.csv(file = "/directory/logcpm25.txt", sep = ""),
+  clr=read.csv(file = "/directory/clr25.txt", sep = ""),
+  linnorm=read.csv(file = "/directory/linnorm25.txt", sep = ""),
+  tmm=read.csv(file = "/directory/tmm25.txt", sep = ""),
+  sct=read.csv(file = "/directory/NEWsct25.txt", sep = "")
+)
+
+datas<-lapply(datas, function(x) x[which(x$User=="matteo"),])
+lapply(datas, function(x) table(x$PID)) 
+datas$logcpm<-datas$logcpm[datas$logcpm$PID==30031,]
+
+library(stringr)
+numextract <- function(string){ 
+  str_extract(string, "\\-*\\d+\\.*\\d*")
+}
+
+
+datas<-lapply(datas, function(x) numextract(x$RSS))
+datas<-lapply(datas, function(x) as.numeric(x))
+pippo<-lapply(datas, function(x) x=c(x[x>100]/1000, x[x<100]))
+pippo<-lapply(pippo, function(x) sort(x, decreasing = F))
+
+df<-data.frame(RAM=c(pippo$scran, pippo$pareto, pippo$deseq, pippo$logcpm,
+                     pippo$clr, pippo$linnorm, pippo$tmm, pippo$sct),
+               norm=c(rep("Scran", length(pippo$scran)),
+                      rep("PsiNorm", length(pippo$pareto)),
+                      rep("DESeq", length(pippo$deseq)),
+                      rep("logCPM", length(pippo$logcpm)),
+                      rep("CLR", length(pippo$clr)),
+                      rep("Linnorm", length(pippo$linnorm)),
+                      rep("TMM", length(pippo$tmm)),
+                      rep("sctransform", length(pippo$sct))),
+               time=c(seq(1:length(pippo$scran)),
+                      seq(1:length(pippo$pareto)),
+                      seq(1:length(pippo$deseq)),
+                      seq(1:length(pippo$logcpm)),
+                      seq(1:length(pippo$clr)),
+                      seq(1:length(pippo$linnorm)),
+                      seq(1:length(pippo$tmm)),
+                      seq(1:length(pippo$sct))
+               ))
+df$norm<-as.factor(df$norm)
+ram25<-rep(NA,8)
+tim25<-rep(NA,8)
+names(ram25)<-levels(df$norm)
+names(tim25)<-levels(df$norm)
+for (i in 1:8) {
+  ram25[i]<-max(df$RAM[df$norm==levels(df$norm)[i]])
+  tim25[i]<-max(df$time[df$norm==levels(df$norm)[i]])
+}
+
+scran10=read.csv(file = "/directory/scran25_10c.txt", sep = "") #scran with 10 core
+strptime(scran10$X.Time, format = "%H:%M:%S")[577]-strptime(scran10$X.Time, format = "%H:%M:%S")[1]
+
+tim25<-c(tim25, 2.9*60)
+names(tim25)<-c(names(tim25)[1:8], "Scran10")
+scran10$RSS<-as.numeric(numextract(scran10$RSS))
+scran10$RSS[scran10$RSS>100]<-scran10$RSS[scran10$RSS>100]/1000
+ram25<-c(ram25, max(scran10$RSS))
+names(ram25)<-c(names(ram25)[1:8], "Scran10")
+
+### 50k
+datas<-list(
+  scran=read.csv(file = "/directory/scran50.txt", sep = ""),
+  pareto=read.csv(file = "/directory/pareto50.txt", sep = ""),
+  deseq=read.csv(file = "/directory/deseq50.txt", sep = ""),
+  logcpm=read.csv(file = "/directory/logcpm50.txt", sep = ""),
+  clr=read.csv(file = "/directory/clr50.txt", sep = ""),
+  linnorm=read.csv(file = "/directory/linnorm50.txt", sep = ""),
+  tmm=read.csv(file = "/directory/tmm50.txt", sep = ""),
+  sct=read.csv(file = "/directory/NEWsct50.txt", sep = "")
+)
+
+datas<-lapply(datas, function(x) x[which(x$User=="matteo"),])
+lapply(datas, function(x) table(x$PID)) 
+
+datas<-lapply(datas, function(x) numextract(x$RSS))
+datas<-lapply(datas, function(x) as.numeric(x))
+pippo<-lapply(datas, function(x) x=c(x[x>100]/1000, x[x<100]))
+pippo<-lapply(pippo, function(x) sort(x, decreasing = F))
+
+df<-data.frame(RAM=c(pippo$scran, pippo$pareto, pippo$deseq, pippo$logcpm,
+                     pippo$clr, pippo$linnorm, pippo$tmm, pippo$sct),
+               norm=c(rep("Scran", length(pippo$scran)),
+                      rep("PsiNorm", length(pippo$pareto)),
+                      rep("DESeq", length(pippo$deseq)),
+                      rep("logCPM", length(pippo$logcpm)),
+                      rep("CLR", length(pippo$clr)),
+                      rep("Linnorm", length(pippo$linnorm)),
+                      rep("TMM", length(pippo$tmm)),
+                      rep("sctransform", length(pippo$sct))),
+               time=c(seq(1:length(pippo$scran)),
+                      seq(1:length(pippo$pareto)),
+                      seq(1:length(pippo$deseq)),
+                      seq(1:length(pippo$logcpm)),
+                      seq(1:length(pippo$clr)),
+                      seq(1:length(pippo$linnorm)),
+                      seq(1:length(pippo$tmm)),
+                      seq(1:length(pippo$sct))
+               ))
+df$norm<-as.factor(df$norm)
+
+ram50<-rep(NA,8)
+tim50<-rep(NA,8)
+names(ram50)<-levels(df$norm)
+names(tim50)<-levels(df$norm)
+for (i in 1:8) {
+  ram50[i]<-max(df$RAM[df$norm==levels(df$norm)[i]])
+  tim50[i]<-max(df$time[df$norm==levels(df$norm)[i]])
+}
+
+scran10=read.csv(file = "/directory/scran50_10c.txt", sep = "") #scran 10 core
+strptime(scran10$X.Time, format = "%H:%M:%S")[length(scran10$X.Time)]-strptime(scran10$X.Time, format = "%H:%M:%S")[1]
+
+tim50<-c(tim50, 5.133333*60)
+names(tim50)<-c(names(tim50)[1:8], "Scran10")
+scran10$RSS<-as.numeric(numextract(scran10$RSS))
+scran10$RSS[scran10$RSS>100]<-scran10$RSS[scran10$RSS>100]/1000
+ram50<-c(ram50, max(scran10$RSS))
+names(ram50)<-c(names(ram50)[1:8], "Scran10")
+
+
+#### 75 000 cells 
+datas<-list(
+  scran=read.csv(file = "/directory/scran75.txt", sep = ""),
+  pareto=read.csv(file = "/directory/pareto75.txt", sep = ""),
+  deseq=read.csv(file = "/directory/deseq75.txt", sep = ""),
+  logcpm=read.csv(file = "/directory/logcpm75.txt", sep = ""),
+  clr=read.csv(file = "/directory/clr75.txt", sep = ""),
+  linnorm=read.csv(file = "/directory/linnorm75.txt", sep = ""),
+  tmm=read.csv(file = "/directory/tmm75.txt", sep = ""),
+  sct=read.csv(file = "/directory/NEWsct75.txt", sep = "")
+)
+
+datas<-lapply(datas, function(x) x[which(x$User=="matteo"),])
+lapply(datas, function(x) table(x$PID)) 
+datas$deseq<-datas$deseq[datas$deseq$PID==29777,]
+
+datas<-lapply(datas, function(x) numextract(x$RSS))
+datas<-lapply(datas, function(x) as.numeric(x))
+pippo<-lapply(datas, function(x) x=c(x[x>100]/1000, x[x<100]))
+pippo<-lapply(pippo, function(x) sort(x, decreasing = F))
+
+df<-data.frame(RAM=c(pippo$scran, pippo$pareto, pippo$deseq, pippo$logcpm,
+                     pippo$clr, pippo$linnorm, pippo$tmm, pippo$sct),
+               norm=c(rep("Scran", length(pippo$scran)),
+                      rep("PsiNorm", length(pippo$pareto)),
+                      rep("DESeq", length(pippo$deseq)),
+                      rep("logCPM", length(pippo$logcpm)),
+                      rep("CLR", length(pippo$clr)),
+                      rep("Linnorm", length(pippo$linnorm)),
+                      rep("TMM", length(pippo$tmm)),
+                      rep("sctransform", length(pippo$sct))),
+               time=c(seq(1:length(pippo$scran)),
+                      seq(1:length(pippo$pareto)),
+                      seq(1:length(pippo$deseq)),
+                      seq(1:length(pippo$logcpm)),
+                      seq(1:length(pippo$clr)),
+                      seq(1:length(pippo$linnorm)),
+                      seq(1:length(pippo$tmm)),
+                      seq(1:length(pippo$sct))
+               ))
+df$norm<-as.factor(df$norm)
+
+ram75<-rep(NA,8)
+tim75<-rep(NA,8)
+names(ram75)<-levels(df$norm)
+names(tim75)<-levels(df$norm)
+for (i in 1:8) {
+  ram75[i]<-max(df$RAM[df$norm==levels(df$norm)[i]])
+  tim75[i]<-max(df$time[df$norm==levels(df$norm)[i]])
+}
+
+scran10=read.csv(file = "/directory/scran75_10c.txt", sep = "") #scran with 10 core
+strptime(scran10$X.Time, format = "%H:%M:%S")[length(scran10$X.Time)]-strptime(scran10$X.Time, format = "%H:%M:%S")[1]
+
+tim75<-c(tim75, 7.4*60)
+names(tim75)<-c(names(tim75)[1:8], "Scran10")
+scran10$RSS<-as.numeric(numextract(scran10$RSS))
+scran10$RSS[scran10$RSS>100]<-scran10$RSS[scran10$RSS>100]/1000
+ram75<-c(ram75, max(scran10$RSS))
+names(ram75)<-c(names(ram75)[1:8], "Scran10")
+
+## 100
+datas<-list(
+  scran=read.csv(file = "/directory/scran100.txt", sep = ""),
+  pareto=read.csv(file = "/directory/pareto100.txt", sep = ""),
+  deseq=read.csv(file = "/directory/deseq100.txt", sep = ""),
+  logcpm=read.csv(file = "/directory/logcpm100.txt", sep = ""),
+  clr=read.csv(file = "/directory/clr100.txt", sep = ""),
+  linnorm=read.csv(file = "/directory/linnorm100.txt", sep = ""),
+  tmm=read.csv(file = "/directory/tmm100.txt", sep = ""),
+  sct=read.csv(file = "/directory/NEWsct100.txt", sep = "")
+)
+
+datas<-lapply(datas, function(x) x[which(x$User=="matteo"),])
+lapply(datas, function(x) table(x$PID)) 
+datas$linnorm<-datas$linnorm[datas$linnorm$PID==31088,]
+
+datas<-lapply(datas, function(x) numextract(x$RSS))
+datas<-lapply(datas, function(x) as.numeric(x))
+pippo<-lapply(datas, function(x) x=c(x[x>100]/1000, x[x<100]))
+pippo<-lapply(pippo, function(x) sort(x, decreasing = F))
+
+df<-data.frame(RAM=c(pippo$scran, pippo$pareto, pippo$deseq, pippo$logcpm,
+                     pippo$clr, pippo$linnorm, pippo$tmm, pippo$sct),
+               norm=c(rep("Scran", length(pippo$scran)),
+                      rep("PsiNorm", length(pippo$pareto)),
+                      rep("DESeq", length(pippo$deseq)),
+                      rep("logCPM", length(pippo$logcpm)),
+                      rep("CLR", length(pippo$clr)),
+                      rep("Linnorm", length(pippo$linnorm)),
+                      rep("TMM", length(pippo$tmm)),
+                      rep("sctransform", length(pippo$sct))),
+               time=c(seq(1:length(pippo$scran)),
+                      seq(1:length(pippo$pareto)),
+                      seq(1:length(pippo$deseq)),
+                      seq(1:length(pippo$logcpm)),
+                      seq(1:length(pippo$clr)),
+                      seq(1:length(pippo$linnorm)),
+                      seq(1:length(pippo$tmm)),
+                      seq(1:length(pippo$sct))
+               ))
+df$norm<-as.factor(df$norm)
+
+ram100<-rep(NA,8)
+tim100<-rep(NA,8)
+names(ram100)<-levels(df$norm)
+names(tim100)<-levels(df$norm)
+for (i in 1:8) {
+  ram100[i]<-max(df$RAM[df$norm==levels(df$norm)[i]])
+  tim100[i]<-max(df$time[df$norm==levels(df$norm)[i]])
+}
+
+scran10=read.csv(file = "/directory/scran100_10c.txt", sep = "")
+strptime(scran10$X.Time, format = "%H:%M:%S")[length(scran10$X.Time)]-strptime(scran10$X.Time, format = "%H:%M:%S")[1]
+
+tim100<-c(tim100, 10.5333333*60)
+names(tim100)<-c(names(tim100)[1:8], "Scran10")
+scran10$RSS<-as.numeric(numextract(scran10$RSS))
+scran10$RSS[scran10$RSS>100]<-scran10$RSS[scran10$RSS>100]/1000
+ram100<-c(ram100, max(scran10$RSS))
+names(ram100)<-c(names(ram100)[1:8], "Scran10")
+
+
+df<-data.frame(RAM=c(ram25, ram50, ram75, ram100),
+               time=c(tim25, tim50, tim75, tim100),
+               norm=rep(names(ram25), 4),
+               ncell=c(rep(" 25.000",9),
+                       rep(" 50.000",9),
+                       rep(" 75.000",9),
+                       rep("100.000",9)))
+df$norm[df$norm=="Scran10"]<-"Scran (10 core)"
+
+library("RColorBrewer")
 library(ggplot2)
-library(RColorBrewer)
-
-#dataset after normalization phase
-load("/directory/otherdatas_after_normalization.rdata")
-norm<-c("Scran","Pareto", "DESeq2", "TMM", "logCPM", "Linnorm", "CLR", "SCT")
-
-#transform in a list of SingleCellExperiment objects
-datasets<-list()
-datasets$res_cs2<-res1$result[[1]]
-datasets$res_10x<-res1$result[[9]]
-datasets$res_dseq<-res1$result[[17]]
-datasets$res_cs51<-res1$result[[25]]
-datasets$res_cs52<-res1$result[[33]]
-datasets$res_cs53<-res1$result[[41]]
-
-for (i in 2:8){
-  assay(datasets$res_cs2, norm[i])<-assay(res1$result[[i]], norm[i])
-  assay(datasets$res_10x, norm[i])<-assay(res1$result[[i+8]], norm [i])
-  assay(datasets$res_dseq, norm[i])<-assay(res1$result[[i+16]], norm [i])
-  assay(datasets$res_cs51, norm[i])<-assay(res1$result[[i+24]], norm [i])
-  assay(datasets$res_cs52, norm[i])<-assay(res1$result[[i+32]], norm [i])
-  assay(datasets$res_cs53, norm[i])<-assay(res1$result[[i+40]], norm [i])
-}
-remove(res1)
-load("/directory/10x_5cl_after_normalization.rdata")
-datasets$res_10x5<-res1$result[[1]]
-for (i in 2:8) {
-  assay(datasets$res_10x5, norm[i])<-assay(res1$result[[i]], norm [i])
-}
-remove(res1)
-
-#PCA plot
-pca.plot<-function(data){
-  names<-assayNames(data)
-  names<-names[-2]
-  title<-c("counts","Scran","PsiNorm","DESeq2","TMM","logCPM","Linnorm","CLR","sctransform")
-  plotlist<-list()
-  for (i in 1:9){
-    data<-scater::runPCA(data, exprs_values=names[i],
-                         scale=T, name=paste0("PCA.", names[i]))
-    df<-data.frame(PC1=reducedDim(data, paste0("PCA.", names[i]))[,1],
-                   PC2=reducedDim(data, paste0("PCA.", names[i]))[,2],
-                   cell_line=data$cell_line_demuxlet
-                   #cell_line=data$cluster # in base the data
-    )
-    plotlist[[i]]<-ggplot(df, aes(PC1, PC2, color=cell_line))+
-      geom_point(aes(color=cell_line), shape=1, alpha=0.7)+ 
-      stat_ellipse(type = "norm")+
-      scale_color_manual(values=c("forestgreen","cyan3", "orange",
-                                  "firebrick3","royalblue",
-                                  "deeppink","blueviolet", "orchid",
-                                  "limegreen", "cyan4","cadetblue",
-                                  "brown1", "bisque4","black", 
-                                  "aquamarine2", "blue4","khaki3"
-      ))+
-      theme_classic()+ ggtitle(title[i])+
-      theme(axis.title.x = element_blank(), 
-            axis.title.y = element_blank(),
-            legend.position = "none",
-            plot.title = element_text(size = 10))
-    
-  }
-  gridExtra::grid.arrange(plotlist[[1]],plotlist[[5]],plotlist[[8]],
-                          plotlist[[6]],plotlist[[9]],plotlist[[4]],
-                          plotlist[[2]],plotlist[[3]],plotlist[[7]],
-                          nrow=3, ncol=3,
-                          bottom="PC1", left="PC2")
-}
-gpca<-pca.plot(datasets$res_cs53)
-
-#create the silhouette matrix
-silhouette<-matrix(NA, nrow = 9, ncol = 7)
-rownames(silhouette)<-c("counts", norm)
-colnames(silhouette)<-names(datasets)
-names<-c("counts", norm)
-for (i in 1:9){
-  for (j in 1:7){
-    data<-scater::runPCA(datasets[[j]], #compute the PCs
-                         exprs_values=names[i], scale=T, #scaling each norm matrix
-                         name=paste0("PCA.", names[i]))
-    dist<-cluster::daisy(reducedDim(data, #compute the matrix of distances
-                                    paste0("PCA.", names[i])))
-    dist<-as.matrix(dist)
-    silhouette[i,j]<-round(summary(
-      silhouette(x=as.numeric(as.factor(data$cell_line_demuxlet)),
-                 dmatrix = dist))$avg.width, digits = 3)
-  }
-}
-
-#NeMo dataset
-load("/directory/normData.rdata")
-datasets<-list()
-datasets$sce1<-res[,1:500]
-datasets$sce2<-res[,501:1000]
-datasets$sce3<-res[,1001:1500]
-datasets$sce4<-res[,1501:2000]
-datasets$sce5<-res[,2001:2500]
-datasets$sce6<-res[,2501:3000]
-remove(res, r_time)
-
-ss<-matrix(NA,nrow = 9, ncol = 6)
-colnames(ss)<-c("cell_smart", "nucleus_smart", "cell_V2", "cell_V3",
-                "nucleus_V2", "nucleus_V3")
-for (i in 1:9){
-  for (j in 1:6){
-    data<-scater::runPCA(datasets[[j]],
-                         exprs_values=names[i], scale=T,
-                         name=paste0("PCA.", names[i]))
-    dist<-cluster::daisy(reducedDim(data, 
-                                    paste0("PCA.", names[i])))
-    dist<-as.matrix(dist)
-    ss[i,j]<-round(summary(
-      silhouette(x=as.numeric(as.factor(data$cluster)),
-                 dmatrix = dist))$avg.width, digits = 3)
-  }
-}
-
-silhouette<-cbind(silhouette,ss)
-remove(ss)
-
-df<-data.frame(Silhouette=as.vector(silhouette),
-               norm=rep(c("counts","Scran","PsiNorm","DESeq2",
-                          "TMM","logCPM","Linnorm","CLR","sctransform"), ncol(silhouette)),
-               data=c(rep("CELSeq", 9),
-                      rep("10x", 9),
-                      rep("DropSeq", 9),
-                      rep("CELSeq51", 9),
-                      rep("CELSeq52", 9),
-                      rep("CELSeq53", 9),
-                      rep("10x5", 9),
-                      rep("csmart", 9),
-                      rep("nsmart", 9),
-                      rep("cV2", 9),
-                      rep("cV3", 9),
-                      rep("nV2", 9),
-                      rep("nV3", 9)),
-               ncell=c(rep(" 250-300", 9),rep(" 902", 9),
-                       rep(" 250-300", 9),rep(" 250-300", 9),
-                       rep(" 250-300", 9),rep(" 250-300", 9),
-                       rep("3918", 9),rep(" 500",54)))
-df$nu[df$norm=="PsiNorm"]<-"PsiNorm"
-df$nu[df$norm=="Scran"]<-"Scran"
-df$nu[df$norm=="logCPM"]<-"logCPM"
-df$sort<-rep(0,nrow(df))
-for (i in 1:nrow(df)) {
-  if(df$norm[i]=="PsiNorm"){df$sort[i]<-df$Silhouette[i]}
-}
-
-library(ggplot2)
-library(ggrepel)
-g1<-ggplot(df, aes(x=reorder(data, sort), y=Silhouette, group=norm))+
-  #geom_text(aes(label = nu, color=norm), size=3)+
-  geom_text_repel(aes(label=nu, color=norm), size=2)+
-  geom_point(aes(color=norm,size=ncell), alpha=0.45)+  
-  theme_classic()+
-  theme(axis.title.x = element_blank(),
-        axis.text.y = element_text(size=13),
-        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, size=13),
-        legend.position = "none",
-        axis.ticks.x = element_blank())+
+gg1<-ggplot(df, aes(x=2*time, y=RAM))+
+  geom_point(aes(color=norm, size=ncell))+
   scale_colour_manual(values=c("#660000","#FF6600",
                                "#66FF33","#009900",
                                "#3399FF","#000099",
-                               "#9900FF","#00CCFF", "#999999"))
-get_legend<-function(myggplot){
-  tmp <- ggplot_gtable(ggplot_build(myggplot))
-  leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box")
-  legend <- tmp$grobs[[leg]]
-  return(legend)
-}
-legend<-get_legend(ggplot(df, aes(x=reorder(data, sort), y=Silhouette, group=norm))+
-                     theme_classic()+
-                     geom_point(aes(color=norm,size=ncell), alpha=0.45)+
+                               "#9900FF","#00CCFF", "666666"))+
+  geom_line(aes(color=norm))+
+  labs(x="Time(sec)", y="RAM(Gb)")+ 
+  scale_x_continuous(breaks = 240*c(0,1,2,3,4,5,6,7,8,9))+
+  theme_minimal(base_line_size = .75)+
+  theme(legend.position = "none",
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size=15),
+        axis.text.x = element_text(size = 13),
+        axis.text.y = element_text(size=13))
+
+a<-which(df$norm=="PsiNorm")
+b<-which(df$norm=="logCPM")
+c<-which(df$norm=="DESeq")
+d<-which(df$norm=="Linnorm")
+e<-which(df$norm=="TMM")
+f<-which(df$norm=="CLR")
+g<-which(df$norm=="sctransform")
+df2<-df[c(a,b,c,d,e,f,g),]
+ggplot(df2, aes(x=2*time, y=RAM))+
+  geom_point(aes(color=norm, size=ncell))+
+  scale_colour_manual(values=c("#660000","#FF6600",
+                               "#66FF33","#009900",
+                               "#3399FF","#00CCFF","666666"))+
+  geom_line(aes(color=norm))+
+  scale_x_continuous(breaks = 240*c(0,1,2,3,4,5,6,7,8,9))+
+  theme_minimal(base_line_size = .75)+ 
+  theme(axis.title.x = element_blank(), axis.title.y = element_blank(),
+        legend.position = "none")
+
+#time by number of cells
+df<-data.frame(time=c(tim25, tim50, tim75, tim100),
+               norm=rep(names(tim25), times=4),
+               ncell=rep(c(25000,50000,75000,100000), each=9))
+
+gtime<-ggplot(df, aes(ncell, time))+
+  geom_point(aes(color=norm, size=ncell))+
+  theme_minimal()+
+  geom_line(aes(color=norm))+
+  theme(legend.position = "none")+
+  scale_colour_manual(values=c("#660000","#FF6600",
+                               "#66FF33","#009900",
+                               "#3399FF","#000099",
+                               "#9900FF","#00CCFF", "666666"))+
+  scale_x_continuous(breaks = c(25000,50000,75000,100000))+
+  labs(x="Number of cells", y="Time (sec)")+
+  theme(legend.position = "none",
+        axis.title.x = element_text(size = 15),
+        axis.title.y = element_text(size=15),
+        axis.text.x = element_text(size = 11),
+        axis.text.y = element_text(size=13))
+
+library(cowplot)
+library(gridExtra)
+df<-data.frame(time=c(tim25, tim50, tim75, tim100),
+               norm=rep(names(tim25), times=4),
+               ncell=rep(c(" 25.000", " 50.000", " 75.000", "100.000"), each=9))
+legend<-get_legend(ggplot(df, aes(ncell, time))+
+                     geom_point(aes(color=norm, size=as.factor(ncell)))+
+                     theme_minimal()+
+                     theme(legend.title = element_blank(),
+                           legend.text = element_text(size = 11),
+                           legend.position = "bottom")+
+                     geom_line(aes(color=norm))+
                      scale_colour_manual(values=c("#660000","#FF6600",
                                                   "#66FF33","#009900",
                                                   "#3399FF","#000099",
-                                                  "#9900FF","#00CCFF", "#999999"))+
-                     theme(legend.text = element_text(size=8))
-)
-g.silh<-gridExtra::grid.arrange(g1, nrow=1, ncol=1, right=legend)
-
-gridExtra::grid.arrange(gpca, g.silh, ncol=2, widths=c(0.45,0.55)) #Figure 3
-
-#for supplementary
-pca.plot(datasets$res_cs2)
-pca.plot(datasets$res_10x)
-pca.plot(datasets$res_dseq)
-pca.plot(datasets$res_cs51)
-pca.plot(datasets$res_cs52)
-pca.plot(datasets$res_10x5)
-
+                                                  "#9900FF","#00CCFF", "666666")))
+pg<-plot_grid(gg1, gtime, ncol=2, align = "hv", labels = c("A","B"))
+grid.arrange(pg, bottom=legend)
