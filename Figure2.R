@@ -9,6 +9,7 @@ library(ggplot2)
 library(RColorBrewer)
 library(cowplot)
 library(ggrepel)
+library(gridExtra)
 
 #dataset after normalization phase
 load("/directory/otherdatas_after_normalization.rdata")
