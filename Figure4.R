@@ -1,473 +1,364 @@
-library(scran)
-library(scater)
-library(CellBench)
-library(DrImpute)
-library(SAVER)
-library(cluster)
-library(heatmaply)
 library(ggplot2)
-library(RColorBrewer)
-
-#dataset after normalization phase
-load("/directory/otherdatas_after_normalization.rdata")
-norm<-c("Scran","Pareto", "DESeq2", "TMM", "logCPM", "Linnorm", "CLR", "SCT")
-
-#transform in a list of SingleCellExperiment objects
-datasets<-list()
-datasets$res_cs2<-res1$result[[1]]
-datasets$res_10x<-res1$result[[9]]
-datasets$res_dseq<-res1$result[[17]]
-datasets$res_cs51<-res1$result[[25]]
-datasets$res_cs52<-res1$result[[33]]
-datasets$res_cs53<-res1$result[[41]]
-
-for (i in 2:8){
-  assay(datasets$res_cs2, norm[i])<-assay(res1$result[[i]], norm[i])
-  assay(datasets$res_10x, norm[i])<-assay(res1$result[[i+8]], norm [i])
-  assay(datasets$res_dseq, norm[i])<-assay(res1$result[[i+16]], norm [i])
-  assay(datasets$res_cs51, norm[i])<-assay(res1$result[[i+24]], norm [i])
-  assay(datasets$res_cs52, norm[i])<-assay(res1$result[[i+32]], norm [i])
-  assay(datasets$res_cs53, norm[i])<-assay(res1$result[[i+40]], norm [i])
-}
-remove(res1)
-load("/directory/10x_5cl_after_normalization.rdata")
-datasets$res_10x5<-res1$result[[1]]
-for (i in 2:8) {
-  assay(datasets$res_10x5, norm[i])<-assay(res1$result[[i]], norm [i])
-}
-remove(res1)
-
-PC1<-list()
-PC2<-list()
-depth<-list()
-names<-assayNames(datasets$res_cs2)
-names<-names[-2]
-for (i in 1:length(datasets)) {
-  for (j in 1:9) {
-    datasets[[i]]<-scater::runPCA(datasets[[i]],
-                                  exprs_values=names[j],
-                                  scale=T,
-                                  name=paste0("PCA.", names[j]))
-  }
-}
-PC1<-lapply(datasets, function(x) lapply(reducedDims(x), 
-                                         function(y) y[,1]))
-PC2<-lapply(datasets, function(x) lapply(reducedDims(x), 
-                                         function(y) y[,2]))
-depth<-lapply(datasets, function(x) apply(counts(x),2,sum))
-
-#Correlation matrix
-Corr<-matrix(NA, ncol = 9, nrow = length(datasets))
-colnames(Corr)<-names
-rownames(Corr)<-names(PC1)
-for (i in 1:length(datasets)) {
-  for (j in 1:9) {
-    Corr[i,j]<-round(max(abs(cor(PC1[[i]][[j]], depth[[i]])),
-                         abs(cor(PC2[[i]][[j]], depth[[i]]))), 
-                     digits = 3)
-  }
-}
-
-load("/directory/normData.rdata")
-datasets<-list()
-datasets$csmart<-res[,1:500]
-datasets$nsmart<-res[,501:1000]
-datasets$cV2<-res[,1001:1500]
-datasets$cV3<-res[,1501:2000]
-datasets$nV2<-res[,2001:2500]
-datasets$nV3<-res[,2501:3000]
-remove(res, r_time)
-for (i in 1:length(datasets)) {
-  for (j in 1:9) {
-    datasets[[i]]<-scater::runPCA(datasets[[i]],
-                                  exprs_values=names[j],
-                                  scale=T,
-                                  name=paste0("PCA.", names[j]))
-  }
-}
-PC1<-lapply(datasets, function(x) lapply(reducedDims(x), 
-                                         function(y) y[,1]))
-PC2<-lapply(datasets, function(x) lapply(reducedDims(x), 
-                                         function(y) y[,2]))
-depth<-lapply(datasets, function(x) apply(counts(x),2,sum))
-
-#Correlation matrix
-Corr2<-matrix(NA, ncol = 9, nrow = length(datasets))
-colnames(Corr2)<-names
-rownames(Corr2)<-names(PC1)
-for (i in 1:length(datasets)) {
-  for (j in 1:9) {
-    Corr2[i,j]<-round(max(abs(cor(PC1[[i]][[j]], depth[[i]])),
-                         abs(cor(PC2[[i]][[j]], depth[[i]]))), 
-                     digits = 3)
-  }
-}
-Corr<-rbind(Corr,Corr2)
-
-df<-data.frame(Correlation=as.vector(Corr),
-               norm=c(rep(colnames(Corr)[1],13),
-                      rep(colnames(Corr)[2],13),
-                      rep("PsiNorm",13),
-                      rep(colnames(Corr)[4],13),
-                      rep(colnames(Corr)[5],13),
-                      rep(colnames(Corr)[6],13),
-                      rep(colnames(Corr)[7],13),
-                      rep(colnames(Corr)[8],13),
-                      rep("sctransform",13)),
-               data=rep(c("CELSeq", "10x", "DropSeq", "CELSeq51",
-                          "CELSeq52","CELSeq53","10x5",
-                          rownames(Corr)[8:13]), 9),
-               ncell=rep(c(" 250-300", " 902", " 250-300"," 250-300",
-                           " 250-300"," 250-300","3918", " 500",
-                           " 500"," 500"," 500"," 500"," 500")))
-df$nu[df$norm=="Scran"]<-"Scran"
-df$nu[df$norm=="PsiNorm"]<-"PsiNorm"
-df$nu[df$norm=="logCPM"]<-"lCPM"
-df$sort<-rep(0,nrow(df))
-for (i in 1:nrow(df)) {
-  if(df$norm[i]=="PsiNorm"){df$sort[i]<-df$Correlation[i]}
-}
-
-library(ggrepel)
-g1<-ggplot(df, aes(x=reorder(data,sort), y=Correlation, color=norm))+
-  geom_point(aes(color=norm, size=ncell), alpha=0.45)+
-  #geom_text(label=df$nu)+
-  geom_text_repel(aes(label=nu, color=norm), size=2)+
-  theme_classic()+
-  theme(axis.title.x = element_blank(),
-        legend.position = "none",
-        axis.text.y = element_text(size=13),
-        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1, size=13),
-        axis.ticks.x = element_blank())+     
-  scale_color_manual(values=c("#660000","#FF6600","#66FF33","#009900",
-                              "#3399FF","#000099","#9900FF","#00CCFF", "#999999"))
-get_legend<-function(myggplot){
-  tmp <- ggplot_gtable(ggplot_build(myggplot))
-  leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box")
-  legend <- tmp$grobs[[leg]]
-  return(legend)
-}
-legend<-get_legend(ggplot(df, aes(x=reorder(data, sort), y=Correlation,
-                                  group=norm))+theme_classic()+
-                     geom_point(aes(color=norm,size=ncell), alpha=0.45)+
-                     scale_colour_manual(values=c("#660000","#FF6600",
-                                                  "#66FF33","#009900",
-                                                  "#3399FF","#000099",
-                                                  "#9900FF","#00CCFF", "#999999"))+
-                     theme(legend.text = element_text(size=8))
-)
-gcorr<-gridExtra::grid.arrange(g1, nrow=1, ncol=1, right=legend)
-
-rm(list= ls()[!(ls() %in% c('gcorr'))])
-
-# ------------- CONCORDANCE --------------------
-library(Seurat)
-library(scater)
-load("/directory/normData.rdata")
-data<-list()
-data$csmart<-res[,1:500]
-data$nsmart<-res[,501:1000]
-data$cV2<-res[,1001:1500]
-data$cV3<-res[,1501:2000]
-data$nV2<-res[,2001:2500]
-data$nV3<-res[,2501:3000]
-remove(res, r_time)
-
-batch=names(data)  
-norm<-c("counts","Scran","Pareto", "DESeq2", "TMM", "logCPM", "Linnorm", "CLR", "SCT")
-vmatrixCS=matrix(NA, 
-                 nrow = nrow(data[[1]]), 
-                 ncol = length(norm))
-rownames(vmatrixCS)=rownames(data[[1]]) 
-vmatrixNS=matrix(NA, 
-                 nrow = nrow(data[[2]]), 
-                 ncol = length(norm))
-rownames(vmatrixNS)=rownames(data[[2]]) 
-vmatrixc2=matrix(NA, 
-                 nrow = nrow(data[[3]]), 
-                 ncol = length(norm))
-rownames(vmatrixc2)=rownames(data[[3]]) 
-vmatrixc3=matrix(NA, 
-                 nrow = nrow(data[[3]]), 
-                 ncol = length(norm))
-rownames(vmatrixc3)=rownames(data[[3]]) 
-vmatrixn2=matrix(NA, 
-                 nrow = nrow(data[[3]]), 
-                 ncol = length(norm))
-rownames(vmatrixn2)=rownames(data[[3]]) 
-vmatrixn3=matrix(NA, 
-                 nrow = nrow(data[[3]]), 
-                 ncol = length(norm))
-rownames(vmatrixn3)=rownames(data[[3]]) 
-colnames(vmatrixCS)=colnames(vmatrixNS)=colnames(vmatrixc2)=
-  colnames(vmatrixc3)=colnames(vmatrixn2)=colnames(vmatrixn3)=norm
-
-library(Seurat)
-for (j in 1:9){
-  fvf1=FindVariableFeatures(assay(data[[1]], norm[j]), 
-                            selection.method = "vst")
-  fvf2=FindVariableFeatures(assay(data[[2]], norm[j]), 
-                            selection.method = "vst")
-  fvf3=FindVariableFeatures(assay(data[[3]], norm[j]), 
-                            selection.method = "vst")
-  fvf4=FindVariableFeatures(assay(data[[4]], norm[j]), 
-                            selection.method = "vst")
-  fvf5=FindVariableFeatures(assay(data[[5]], norm[j]), 
-                            selection.method = "vst")
-  fvf6=FindVariableFeatures(assay(data[[6]], norm[j]), 
-                            selection.method = "vst")
-  vmatrixCS[,j]<-fvf1[,4]
-  vmatrixNS[,j]<-fvf2[,4]
-  vmatrixc2[,j]<-fvf3[,4]
-  vmatrixc3[,j]<-fvf4[,4]
-  vmatrixn2[,j]<-fvf5[,4]
-  vmatrixn3[,j]<-fvf6[,4]
-}
-m1<-matrix(NA,nrow = 500, ncol = length(norm))
-m2<-matrix(NA,nrow = 500, ncol = length(norm))
-m3<-matrix(NA,nrow = 500, ncol = length(norm))
-m4<-matrix(NA,nrow = 500, ncol = length(norm))
-m5<-matrix(NA,nrow = 500, ncol = length(norm))
-m6<-matrix(NA,nrow = 500, ncol = length(norm))
-
-for (i in 1:length(norm)) {
-  m1[,i]<-names(sort(vmatrixCS[,i], decreasing = T))[1:500]
-  m2[,i]<-names(sort(vmatrixNS[,i], decreasing = T))[1:500]
-  m3[,i]<-names(sort(vmatrixc2[,i], decreasing = T))[1:500]
-  m4[,i]<-names(sort(vmatrixc3[,i], decreasing = T))[1:500]
-  m5[,i]<-names(sort(vmatrixn2[,i], decreasing = T))[1:500]
-  m6[,i]<-names(sort(vmatrixn3[,i], decreasing = T))[1:500]
-}
-
-conc<-matrix(NA,nrow = 15, ncol = 9)
-rownames(conc)<-c("CS-NS", "CS-c2", "CS-c3", "CS-n2", "CS-n3",
-                  "NS-c2", "NS-c3", "NS-n2", "NS-n3",
-                  "c2-c3", "c2-n2", "c2-n3",
-                  "c3-n2", "c3-n3",
-                  "n2-n3")
-colnames(conc)<-norm
-for (i in 1:9) {
-  conc[1,i]<-sum(m1[,i]%in%m2[,i])/500
-  conc[2,i]<-sum(m1[,i]%in%m3[,i])/500
-  conc[3,i]<-sum(m1[,i]%in%m4[,i])/500
-  conc[4,i]<-sum(m1[,i]%in%m5[,i])/500
-  conc[5,i]<-sum(m1[,i]%in%m6[,i])/500
-  conc[6,i]<-sum(m2[,i]%in%m3[,i])/500
-  conc[7,i]<-sum(m2[,i]%in%m4[,i])/500
-  conc[8,i]<-sum(m2[,i]%in%m5[,i])/500
-  conc[9,i]<-sum(m2[,i]%in%m6[,i])/500
-  conc[10,i]<-sum(m3[,i]%in%m4[,i])/500
-  conc[11,i]<-sum(m3[,i]%in%m5[,i])/500
-  conc[12,i]<-sum(m3[,i]%in%m6[,i])/500
-  conc[13,i]<-sum(m4[,i]%in%m5[,i])/500
-  conc[14,i]<-sum(m4[,i]%in%m6[,i])/500
-  conc[15,i]<-sum(m5[,i]%in%m6[,i])/500
-}
-
-cmlist<-list()
-for (k in 1:10){
-  cm<-matrix(NA, nrow = 6, ncol=9)
-  rownames(cm)<-names(data)
-  colnames(cm)<-norm
-  
-  for (i in 1:length(data)) {
-    n<-1:ncol(data[[i]])
-    a<-sample(n, max(n)/2, replace = F)
-    b<-n[-a]
-    dataA<-data[[i]][,a]
-    dataB<-data[[i]][,b]
-    mA<-matrix(NA, nrow = 500, ncol = length(norm))
-    mB<-matrix(NA, nrow = 500, ncol = length(norm))
-    co<-rep(NA,9)
-    names(co)<-norm
-    
-    for (j in 1:9){
-      fvfA=FindVariableFeatures(assay(dataA, norm[j]), 
-                                selection.method = "vst")
-      fvfB=FindVariableFeatures(assay(dataB, norm[j]), 
-                                selection.method = "vst")
-      #matrices with variances
-      vmatrixA<-fvfA[,4]
-      names(vmatrixA)<-rownames(fvfA)
-      vmatrixB<-fvfB[,4]
-      names(vmatrixB)<-rownames(fvfB)
-      
-      #matrices with sorted genes by variance
-      mA[,j]<-names(sort(vmatrixA, decreasing = T))[1:500]
-      mB[,j]<-names(sort(vmatrixB, decreasing = T))[1:500]
-      
-      co[j]<-sum(mA[,j] %in% mB[,j])/500
-    }
-    cm[i,]<-co
-    
-  }
-  cmlist[[k]]<-cm
-}
-
-concw<-matrix(NA,nrow = 6,ncol = 9)
-rownames(concw)<-rownames(cmlist[[1]])
-colnames(concw)<-colnames(cmlist[[1]])
-for (i in 1:6) {
-  for (j in 1:9) {
-    concw[i,j]<-mean(cmlist[[1]][i,j],cmlist[[2]][i,j],cmlist[[3]][i,j],
-                     cmlist[[4]][i,j],cmlist[[5]][i,j],cmlist[[6]][i,j],
-                     cmlist[[7]][i,j],cmlist[[8]][i,j],cmlist[[9]][i,j],
-                     cmlist[[10]][i,j])
-  }
-}
-
-concordance<-rbind(concw, conc)
-
-load("/directory/otherdatas_after_normalization.rdata")
-norm<-c("Scran","Pareto", "DESeq2", "TMM", "logCPM", "Linnorm", "CLR", "SCT")
-
-data<-list()
-data$res_cs2<-res1$result[[1]]
-data$res_10x<-res1$result[[9]]
-data$res_dseq<-res1$result[[17]]
-
-for (i in 2:8){
-  assay(data$res_cs2, norm[i])<-assay(res1$result[[i]], norm[i])
-  assay(data$res_10x, norm[i])<-assay(res1$result[[i+8]], norm [i])
-  assay(data$res_dseq, norm[i])<-assay(res1$result[[i+16]], norm [i])
-}
-remove(res1)
-batch=names(data)  
-norm<-c("counts",norm)
-vmatrixCS=matrix(NA, 
-                 nrow = nrow(data[[1]]), 
-                 ncol = length(norm))
-rownames(vmatrixCS)=rownames(data[[1]]) 
-vmatrix10=matrix(NA, 
-                 nrow = nrow(data[[2]]), 
-                 ncol = length(norm))
-rownames(vmatrix10)=rownames(data[[2]]) 
-vmatrixDS=matrix(NA, 
-                 nrow = nrow(data[[3]]), 
-                 ncol = length(norm))
-rownames(vmatrixDS)=rownames(data[[3]]) 
-colnames(vmatrix10)=colnames(vmatrixCS)=colnames(vmatrixDS)=norm
-
-for (j in 1:9){
-  fvfcs=FindVariableFeatures(assay(data[[1]], norm[j]), 
-                             selection.method = "vst")
-  fvf10=FindVariableFeatures(assay(data[[2]], norm[j]), 
-                             selection.method = "vst")
-  fvfds=FindVariableFeatures(assay(data[[3]], norm[j]), 
-                             selection.method = "vst")
-  vmatrixCS[,j]<-fvfcs[,4]
-  vmatrix10[,j]<-fvf10[,4]
-  vmatrixDS[,j]<-fvfds[,4]
-}
-cs<-matrix(NA,nrow = 500, ncol = length(norm))
-sc10<-matrix(NA,nrow = 500, ncol = length(norm))
-ds<-matrix(NA,nrow = 500, ncol = length(norm))
-
-for (i in 1:length(norm)) {
-  cs[,i]<-names(sort(vmatrixCS[,i], decreasing = T))[1:500]
-  sc10[,i]<-names(sort(vmatrix10[,i], decreasing = T))[1:500]
-  ds[,i]<-names(sort(vmatrixDS[,i], decreasing = T))[1:500]
-  
-}
-conc<-matrix(NA,nrow = 3, ncol = 9)
-rownames(conc)<-c("Cseq-10x", "Cseq-Dseq", "Dseq-10x")
-colnames(conc)<-norm
-
-for (i in 1:9) {
-  conc[1,i]<-sum(cs[,i]%in%sc10[,i])/500
-  conc[2,i]<-sum(cs[,i]%in%ds[,i])/500
-  conc[3,i]<-sum(ds[,i]%in%sc10[,i])/500
-}
-
-cmlist<-list()
-for (k in 1:10) {
-  cm<-matrix(NA,nrow = 3,ncol=9)
-  rownames(cm)<-names(data)
-  colnames(cm)<-norm
-  for (i in 1:length(data)) {
-    n<-1:ncol(data[[i]])
-    a<-sample(n, max(n)/2, replace = F)
-    b<-n[-a]
-    dataA<-data[[i]][,a]
-    dataB<-data[[i]][,b]
-    mA<-matrix(NA, nrow = 500, ncol = length(norm))
-    mB<-matrix(NA, nrow = 500, ncol = length(norm))
-    co<-rep(NA,9)
-    names(co)<-norm
-    for (j in 1:9){
-      fvfA=FindVariableFeatures(assay(dataA, norm[j]), 
-                                selection.method = "vst")
-      fvfB=FindVariableFeatures(assay(dataB, norm[j]), 
-                                selection.method = "vst")
-      
-      vmatrixA<-fvfA[,4]
-      names(vmatrixA)<-rownames(fvfA)
-      vmatrixB<-fvfB[,4]
-      names(vmatrixB)<-rownames(fvfB)
-      
-      mA[,j]<-names(sort(vmatrixA, decreasing = T))[1:500]
-      mB[,j]<-names(sort(vmatrixB, decreasing = T))[1:500]
-      
-      co[j]<-sum(mA[,j]%in%mB[,j])/500
-    }
-    cm[i,]<-co
-    
-  }
-  cmlist[[k]]<-cm
-}
-
-concw<-matrix(NA,nrow = 3,ncol = 9)
-rownames(concw)<-rownames(cmlist[[1]])
-colnames(concw)<-colnames(cmlist[[1]])
-for (i in 1:3) {
-  for (j in 1:9) {
-    concw[i,j]<-mean(cmlist[[1]][i,j],cmlist[[2]][i,j],cmlist[[3]][i,j],
-                     cmlist[[4]][i,j],cmlist[[5]][i,j],cmlist[[6]][i,j],
-                     cmlist[[7]][i,j],cmlist[[8]][i,j],cmlist[[9]][i,j],
-                     cmlist[[10]][i,j])
-  }
-}
-
-conc3cel<-rbind(concw, conc)
-
-conc<-rbind(conc3cel[1:3,], concordance[1:6,], 
-            conc3cel[4:6,], concordance[7:21,] )
-myrow<-data.frame(row.names = rownames(conc),
-                  nena = c(rep("Reproducibility",9),
-                           rep("Replicability", 18)),
-                  wow=c(rep("Tian", 3),
-                        rep("NeMO", 6),
-                        rep("Tian", 3),
-                        rep("NeMO", 15)))
-
-mycol=list(nena=c(Reproducibility="gold", Replicability="gold3"),
-           wow=c(Tian="brown1", NeMO="brown4"))
-
-library(RColorBrewer)
-concheat<-pheatmap::pheatmap(conc, cluster_rows = F, 
-                   annotation_row = myrow,
-                   annotation_names_row = F, 
-                   annotation_colors = mycol,
-                   color=colorRampPalette(c("#F7FBFF","#FFFFD9","#C7E9B4",
-                                            "#7FCDBB","#41B6C4","#1D91C0",
-                                            "#225EA8","#08306B",
-                                            "#081D58", "#000000"))(30),
-                   angle_col = 45, cutree_cols = 3,
-                   display_numbers = T, gaps_row = c(3,9,12), legend = F,
-                   number_color = matrix(c(rep("yellow2",36),
-                                           rep("gray40",9),
-                                           rep("yellow2",18),
-                                           "gray40", "yellow2",
-                                           rep("gray40",2),rep("yellow2",3),
-                                           "gray40",rep("yellow2",37),
-                                           rep("gray40", 9*9),
-                                           rep("yellow2",9),
-                                           rep("gray40", 11), 
-                                           rep("yellow2",7),
-                                           rep("gray40",9),
-                                           rep("yellow2",9),
-                                           rep("gray40",9)),
-                                         nrow=27, ncol=9, byrow = T))
-
+library(cowplot)
 library(gridExtra)
-grid.arrange(gcorr, concheat$gtable, ncol=2)
+
+load("/directory/UMAP.Rdata") #computed the UMAP of each normalized matrix 
+names(lUMAP)<-c("counts", "Scran", "PsiNorm", "Linnorm", "logCPM")
+
+clust.ann<-read.csv("/directory/cluster.annotation.csv")
+clust.mem<-read.csv("/directory/cluster.membership.csv")
+
+colors<-clust.ann$cluster_color[c(8,9,59,61,63,65,66,67,70,75,28,12,15,92,29,31,93,35)]
+
+for(i in 1:100){
+  clust.mem$subclass[clust.mem$x==i]<-clust.ann$subclass_label[i]
+}
+clust.mem$subclass<-as.factor(clust.mem$subclass)
+
+timesec<-c(0, 2227, 167, 258, 58)
+timemin<-round(timesec/60, digits = 1)
+gg2<-list()
+for (i in 1:length(lUMAP)) {
+  df<-data.frame(U1=lUMAP[[i]][,1],
+                 U2=lUMAP[[i]][,2],
+                 cell_subline=clust.mem$subclass)
+  df<-df[-c(which(df$cell_subline=="doublet"),
+            which(df$cell_subline=="Low Quality")), ]
+  df$cell_subline<-droplevels(df$cell_subline)
+  
+  gg2[[i]]<-ggplot(df, aes(U1, U2, color=cell_subline))+
+    geom_point(aes(color=cell_subline))+
+    ggtitle(names(lUMAP)[i],
+            subtitle = paste("SEC:", timesec[i], "MIN:", timemin[i]))+
+    theme_classic()+
+    theme(plot.title = element_text(hjust = 0.5, size = 15),
+          plot.subtitle = element_text(size = 12), legend.position = "none",
+          axis.title.x = element_blank(), axis.title.y = element_blank())+ 
+    scale_color_manual(values = colors)
+}
+
+load("/directory/ARIPCA.Rdata") #computed the Adjusted Rand Index from PCA
+rownames(ARI)[3]<-"PsiNorm"
+ARI<-rbind(ARI, rep(0.527, 50))
+rownames(ARI)[6]<-"ScranCLUST"
+df<-data.frame(ARI=rowMeans(ARI),
+               norm=rownames(ARI))
+gARI<-ggplot(df, aes(x=reorder(norm, ARI), y=ARI))+
+  geom_point(size=4)+
+  theme_minimal()+
+  theme(legend.position = "none",
+        axis.text.x = element_text(hjust = 1,size = 13, vjust = 1, angle = 30),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(size=15),
+        axis.text.y = element_text(size = 13)
+  )
+
+plot_grid(gg2[[1]], gg2[[5]], gg2[[4]],
+          gg2[[3]], gg2[[2]], gARI, nrow=2,
+          labels = c("A", "B", "C", "D", "E" ,"F"),
+          label_size = 10)
+
+# scran cluster
+load("/directory/UMAP2scran_clust.Rdata") #UMAP for scran with 10 core
+df<-df[-c(which(df$subclass_label=="doublet"),
+          which(df$subclass_label=="Low Quality")), ]
+df$cell_subline<-droplevels(as.factor(df$subclass_label))
+
+gscrac<-ggplot(df, aes(U1, U2, color=subclass_label))+
+  geom_point(aes(color=subclass_label))+
+  ggtitle("ScranCLUST",
+          subtitle = "SEC: 2138 MIN: 35.6")+
+  theme_classic()+
+  theme(plot.title = element_text(hjust = 0.5,
+                                  size = 15),
+        plot.subtitle = element_text(size = 12), 
+        legend.position = "none",
+        axis.title.x = element_blank(), axis.title.y = element_blank())+ 
+  scale_color_manual(values = colors)
+
+legend<-get_legend(ggplot(df, aes(U1, U2, color=subclass_label))+
+                     geom_point(aes(color=subclass_label))+
+                     theme_classic()+
+                     theme(legend.position = "bottom",
+                           legend.title = element_blank())+
+                     scale_color_manual(values = colors))
+
+# HEATMAP 
+sce1<-read10xCounts("/directory/umi_counts.h5")
+annotation<-read.csv2(file = "/directory/cluster.annotation.csv",
+                      sep = ";", header = T)
+members<-read.csv2(file = "/directory/cluster.membership.csv",
+                   sep = ";", header = T)
+colnames(members) <- cbind("cell_id", "cluster_id")
+cluster_info <- inner_join(members, annotation)# merge annotations
+
+# split cell id in barcode + run_id
+tmp <- strsplit(cluster_info$cell_id, "L")
+cluster_info$barcode <- purrr::map_chr(tmp, 1)
+cluster_info$run_id <- paste0("L", purrr::map_chr(tmp, 2))
+
+# merge annotation in colData
+colData(sce1) <- DataFrame(left_join(as.data.frame(colData(sce1)), 
+                                     cluster_info, 
+                                     by = c("Barcode" = "barcode")))
+colData(sce1)
+keep<-which(!is.na(sce1$cell_id))
+sce1<-sce1[,keep]
+
+scran_norm = function(sce){
+  tp = system.time({
+    sce = scran::computeSumFactors(sce)
+    scra = scater::normalizeCounts(sce, exprs_values="counts") 
+  })
+  assay(sce,"Scran")<-scra
+  
+  method_name = "scran"
+  method_type = "norm"
+  if (!is.null(metadata(sce)$running_time)){
+    metadata(sce)$running_time = rbind(metadata(sce)$running_time, data.frame(method=method_name, method_type=method_type, time=unname(tp)[1]))
+  }else{
+    metadata(sce)$running_time = data.frame(method=method_name,method_type=method_type,time=unname(tp)[1])
+  }
+  return(sce)
+}
+
+#PARETO
+pareto.MLE2 <- function(mat) {
+  n <- nrow(mat)
+  m <- colMins(mat)
+  a <- n/colSums(t(t(log(mat)) - log(m)))
+  return(a)
+}
+
+pareto_norm2 <- function(sce) {
+  c <- counts(sce)
+  tp <- system.time({
+    alfa <- pareto.MLE2(c+1)
+    m <- log2(t(t(c)*alfa)+1)
+    assay(sce, "Pareto") <- m
+    sce$sizefactor<-1/alfa
+  })
+  method_name = "Pareto"
+  method_type = "norm"
+  if (!is.null(metadata(sce)$running_time)){
+    metadata(sce)$running_time = rbind(metadata(sce)$running_time, data.frame(method=method_name, method_type=method_type, time=unname(tp)[1]))
+  }else{
+    metadata(sce)$running_time = data.frame(method=method_name,method_type=method_type,time=unname(tp)[1])
+  }
+  return(sce)
+}
+
+#DESeq
+DESeq2_norm = function(sce){
+  c<-counts(sce)
+  tp = system.time({
+    sizeFactors(sce) <- DESeq2::estimateSizeFactorsForMatrix(c,
+                                                             type = "poscounts")
+    des <-scater::normalizeCounts(sce, exprs_values="counts")
+    assay(sce,"DESeq2")<-des
+  })
+  
+  method_name = "DESeq2"
+  method_type = "norm"
+  if (!is.null(metadata(sce)$running_time)){
+    metadata(sce)$running_time = rbind(metadata(sce)$running_time, data.frame(method=method_name, method_type=method_type, time=unname(tp)[1]))
+  }else{
+    metadata(sce)$running_time = data.frame(method=method_name,method_type=method_type,time=unname(tp)[1])
+  }
+  return(sce)
+}
+
+#TMM
+TMM_norm = function(sce){
+  c<-counts(sce)
+  tp = system.time({
+    sizeFactors(sce) <- edgeR::calcNormFactors(c, 
+                                               method = "TMM") * colSums(c)
+    tmmn <- scater::normalizeCounts(sce, exprs_values="counts")
+    assay(sce, "TMM")<-tmmn
+  })
+  
+  method_name = "TMM"
+  method_type = "norm"
+  if (!is.null(metadata(sce)$running_time)){
+    metadata(sce)$running_time = rbind(metadata(sce)$running_time, data.frame(method=method_name, method_type=method_type, time=unname(tp)[1]))
+  }else{
+    metadata(sce)$running_time = data.frame(method=method_name,method_type=method_type,time=unname(tp)[1])
+  }
+  return(sce)
+}
+
+norm_method <- list(
+  scran = scran_norm,
+  pareto=pareto_norm2,
+  DESeq2=DESeq2_norm,
+  TMM=TMM_norm)
+
+pvalb<-which(sce1$subclass_label=="Pvalb") #Oligo vs Astro
+sst<-which(sce1$subclass_label=="Sst")
+
+oligo<-which(sce1$subclass_label=="Oligo") #Oligo vs Astro
+astro<-which(sce1$subclass_label=="Astro")
+
+set.seed(1234)
+pvalb<-pvalb[sample(1:length(pvalb), 400)] #subsamples
+sst<-sst[sample(1:length(sst), 400)]  
+
+counts<-cbind(counts(sce1)[,pvalb], counts(sce1)[,sst])
+#counts<-cbind(counts(sce1)[,oligo], counts(sce1)[,astro])
+sce<-SingleCellExperiment(assays=list(counts=as.matrix(counts)))
+remove(sce1, counts)
+sce$celname<-rep(c("Pvalb", "Sst"), c(length(pvalb), length(sst)))
+#sce$celname<-rep(c("Oligo", "Astro"), c(length(oligo), length(astro)))
+sce<-sce[rowSums(counts(sce) > 0) > 4,]
+
+datasets<-list(dati=sce)
+#normalization
+res1 <- datasets %>%
+  apply_methods(norm_method)
+
+res<-res1$result
+res<-SingleCellExperiment(assays=list(counts=counts(res[[1]]),
+                                      Scran=assay(res[[1]], "Scran"),
+                                      Pareto=assay(res[[2]], "Pareto"),
+                                      DESeq2=assay(res[[3]], "DESeq2"),
+                                      TMM=assay(res[[4]], "TMM")))
+
+res$cell_type=rep(c("Pvalb", "Sst"), times=c(length(pvalb), length(sst)))
+#res$cell_type=rep(c("Oligo", "Astro"), times=c(length(oligo), length(astro)))
+res$cell_type=as.factor(res$cell_type)
+res$SFscran<-res1$result[[1]]$sizeFactor
+res$SFpareto<-res1$result[[2]]$sizefactor
+res$SFdeseq<-res1$result[[3]]$sizeFactor
+res$SFtmm<-res1$result[[4]]$sizeFactor
+res$SFlogcpm<-1/apply(counts(res),2, sum)
+
+library(edgeR)
+names<-c(assayNames(res)[-1], "logCPM") #in 1 there is raw count matrix
+sf<-colData(res)[,-1] #the size factors
+
+qlflist<-list()
+DElist<-list()
+for (i in 1:length(names)) {
+  y <- DGEList(counts=counts(res),
+               norm.factors = sf[,i],
+               group = res$cell_type)
+  design <- model.matrix(~res$cell_type)
+  y <- estimateDisp(y, design)
+  
+  fit <- glmQLFit(y, design)
+  qlflist[[i]] <- glmQLFTest(fit, coef = 2)
+  DElist[[i]]<-topTags(qlflist[[i]], n = nrow(qlflist[[i]]),
+                       adjust.method = "BH",
+                       p.value = 0.05)$table
+}
+names(DElist)<-names(qlflist)<-names
+
+DE_PvalbvsSst<-DElist
+for (i in 1:length(DE_PvalbvsSst)) {
+  DE_PvalbvsSst[[i]]$genenames=rownames(DE_PvalbvsSst[[i]])
+}
+
+# DE_OligovsAstro<-DElist
+# for (i in 1:length(DE_OligovsAstro)) {
+#   DE_OligovsAstro[[i]]$genenames=rownames(DE_OligovsAstro[[i]])
+# }
+
+#once obtained the two DEG objects DE_OligovsAstro and DE_PvalbvsSst
+for (i in 1:length(oligo)) {
+  oli<-as_tibble(DE_OligovsAstro[[i]])
+  oli<-oli %>% arrange(FDR)
+  oligo[[i]]<-oli[1:nrow(oligo[[i]]),]
+  
+  pva<-as_tibble(DE_PvalbvsSst[[i]])
+  pva<-pva %>% arrange(FDR)
+  pvalb[[i]]<-pva[1:nrow(pvalb[[i]]),]
+}
+
+ensembl=useMart("ensembl")
+ensembl = useDataset("mmusculus_gene_ensembl", mart=ensembl)
+
+Glist_pvalb<-list()
+Glist_oligo<-list()
+for (i in 1:length(pvalb)) {
+  Glist_pvalb[[i]]<-getBM(filters= "ensembl_gene_id", 
+                          attributes= c("ensembl_gene_id", "mgi_symbol"),
+                          values=list(pvalb[[i]]$genenames),
+                          mart= ensembl)
+  Glist_oligo[[i]]<-getBM(filters= "ensembl_gene_id", 
+                          attributes= c("ensembl_gene_id", "mgi_symbol"),
+                          values=list(oligo[[i]]$genenames),
+                          mart= ensembl)
+}
+names(Glist_pvalb)=names(Glist_oligo)=names(pvalb)
+
+f<-function(list1, list2){
+  list3<-list1
+  for (i in 1:length(list1)) {
+    m<-match(list1[[i]]$genenames, list2[[i]]$ensembl_gene_id)
+    list3[[i]]<-cbind(list3[[i]], list2[[i]]$mgi_symbol[m])
+  }
+  list3
+}
+
+DEpvalb<-f(pvalb, Glist_pvalb)
+DEoligo<-f(oligo, Glist_oligo)
+
+crearank<-function(tab,mark=markers){
+  tmp<-data.frame(tab,rank=c(1:nrow(tab)))
+  f<-match(mark,tab$`list2[[i]]$mgi_symbol[m]`)
+  tmp2<-tmp[f,c(1,6,7)]
+  tmp2
+  
+}
+
+library(ComplexHeatmap)
+library(cowplot)
+markers<-c("Pvalb","Sst")
+prova<-lapply(DEpvalb, crearank)
+
+resPvalb<-data.frame(marker=prova[[1]]$list2..i...mgi_symbol.m.,
+                     ScranFC=prova[[1]]$logFC,Scran=prova[[1]]$rank,
+                     PsiNormFC=prova[[2]]$logFC,PsiNorm=prova[[2]]$rank,
+                     DESEQ2FC=prova[[3]]$logFC,DESEQ2=prova[[3]]$rank,
+                     TMM.FC=prova[[4]]$logFC,TMM=prova[[4]]$rank,
+                     logCPM.FC=prova[[5]]$logFC,logCPM=prova[[5]]$rank,
+                     ScranCLUSTFC=prova[[6]]$logFC,ScranCLUST=prova[[6]]$rank)
+
+markers<-c("Mbp","Aqp4","Rorb")
+prova<-lapply(DEoligo,crearank)
+resOligo<-data.frame(marker=prova[[1]]$list2..i...mgi_symbol.m.,ScranFC=prova[[1]]$logFC,Scran=prova[[1]]$rank,
+                     PsiNormFC=prova[[2]]$logFC,PsiNorm=prova[[2]]$rank,
+                     DESEQ2FC=prova[[3]]$logFC,DESEQ2=prova[[3]]$rank,
+                     TMM.FC=prova[[4]]$logFC,TMM=prova[[4]]$rank,
+                     logCPM.FC=prova[[5]]$logFC,logCPM=prova[[5]]$rank,
+                     ScranCLUSTFC=prova[[6]]$logFC,ScranCLUST=prova[[6]]$rank)
+
+refinal<-rbind(resPvalb,resOligo)
+refinal2<-refinal[,seq(3,13,by=2)]
+rownames(refinal2)<-refinal[,1]
+refinal2<-rbind(refinal2, "Mean"= apply(refinal2,2,mean))
+
+library(RColorBrewer)
+my_palette <- rev(colorRampPalette(brewer.pal(11,name="RdYlBu"))(50))
+my_palette<-my_palette[seq(10,40,by=2)]
+
+g1<-pheatmap(refinal2[1:2,], display_numbers = T,cluster_rows = F,cluster_cols = F,legend=F,show_colnames = F,color =my_palette, main="Pvalb vs Sst", fontsize=14)
+g2<-pheatmap(refinal2[3:5,], display_numbers = T,cluster_rows = F,cluster_cols = F,legend=F,show_colnames = F,color =my_palette, main="Oligo vs Astro", fontsize=14)
+g3<-pheatmap(refinal2[6,], display_numbers = T,cluster_rows = F,cluster_cols = F,color =my_palette,legend=F, main="Mean Rank", 
+             fontsize = 14, angle_col = "45")
+
+library(ggplotify)
+pheat<-plot_grid(as.ggplot(g1),as.ggplot(g2),as.ggplot(g3), 
+                 nrow=3, align = "v" )
+
+## FINAL plot
+gUMAP<-gridExtra::grid.arrange(gg2[[1]], gg2[[5]], gg2[[4]],
+                               gg2[[3]], gg2[[2]],gscrac, ncol=3,
+                               bottom="UMAP1", left="UMAP2")
+gUMAP<-grid.arrange(gUMAP, bottom=legend)
+
+pg<-plot_grid(gARI, pheat, ncol=2, 
+              labels=c("B", "C"), align = "v",
+              rel_widths = c(4,7))
+plot_grid(gUMAP, pg, ncol=1, labels = c("A", ""), rel_heights = c(7,5))
